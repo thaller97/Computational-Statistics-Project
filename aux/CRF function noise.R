@@ -8,10 +8,10 @@
 #library(bindata)
 #library(fitdistrplus)
 #library(Rfast)
-##library(grf)
-#
+#library(grf)
+
 #setwd("/Users/timohaller/Desktop/CausalForests/Analyse/R")
-#
+
 #rm(list=ls())
 #
 ## Load and select data
@@ -37,36 +37,18 @@
 #
 #data =  data[complete.cases(data), ]
 #data$housing = NULL
+#
+#
+#n_noise = 20
+#N = 1000
+#
+#set.seed(123)
+#gamma_true_val = runif(n=2000,-1,1)
+#Sigma_noise_val = diag(2000)
 
-### General functions
-
-beta_hat <- function(y,design_matrix) {
+crf_sim_noise <- function(n_noise_vec=c(20,50,100),gamma_true=gamma_true_val, Sigma_noise = Sigma_noise_val, n_obs = 1000, m_runs=10, dgp_complex=T) {
   
-  X = as.matrix(design_matrix)
-  Y = as.matrix(y)
-  
-  XX_inv = solve(t(X)%*%X)
-  estimate = XX_inv%*%t(X)%*%Y
-  
-  return(estimate)
-  
-} 
-
-dataset_graph <- function(data,vars) {
-    graph_data <- data.frame(t(data[vars,]))
-    graph_data$Obs <- as.numeric(row.names(graph_data))
-    graph_data <- pivot_longer(graph_data,cols=c(vars))
-    names(graph_data) <- c("Obs","Model","Value")
-    graph_data$Model <- factor(graph_data$Model,levels=c(vars))
-    
-    return(graph_data)
-}
-
-### Start with causal forest 
-
-crf_sim_obs <- function(n_obs=c(100), m_runs=10,dgp_complex=T) {
-  
-  n_sim = length(n_obs)
+  n_sim = length(n_noise_vec)
   
   ### Set up results data_frame
   
@@ -76,20 +58,24 @@ crf_sim_obs <- function(n_obs=c(100), m_runs=10,dgp_complex=T) {
   
   for (k in seq(1,n_sim,1)) {
     
-    n = n_obs[k]
+    n_noise = as.integer(n_noise_vec[k])
     
-    #print(n)
-    message(n)
+    #print(n_noise)
+    message(n_noise)
     col = c()
-    col = cbind(col,n)
+    col = cbind(col,n_noise)
     
-    beta_true = matrix(data=c(3.5,1.7,0.3,-0.9,-0.5, 0.8,-0.5,0.3,-0.5,0.8,0.15,0.001,0.3,-0.013,-0.000037,0.0001392), nrow=16)
+    Sigma_noise_sel = Sigma_noise[1:n_noise, 1:n_noise]
+    gamma_true_sel = gamma_true[1:n_noise]
+    
+    beta_true = matrix(data=c(3.5,1.7,0.3,-0.9,-0.5, 0.8,-0.5,0.3,-0.5,0.8,0.15,0.001,0.3,-0.013,-0.000037,0.0001392,gamma_true_sel), nrow=16+length(gamma_true_sel))
     
     set.seed(123)
-    N = n 
+    N = n_obs
     M = m_runs
     
     counter = 123
+    
     
     for (i in seq(1:M)) {
       
@@ -98,7 +84,7 @@ crf_sim_obs <- function(n_obs=c(100), m_runs=10,dgp_complex=T) {
       #print(i)
       message(i)
       
-      # Set up results dataframes
+      # Prepare dataframes
       
       if (i == 1) {
         
@@ -110,7 +96,7 @@ crf_sim_obs <- function(n_obs=c(100), m_runs=10,dgp_complex=T) {
         
       }
       
-      # Draw datasample (test and training)
+      # Draw datasample (training and test)
       
       for (j in seq(1:2)) {
         
@@ -123,8 +109,11 @@ crf_sim_obs <- function(n_obs=c(100), m_runs=10,dgp_complex=T) {
           
           high = rbinom(N,1,0.5)
           prior = rexp(n=N, rate=0.1176)
-          
           prior_squ = prior*prior
+          
+          ### Draw noise variables from multivariate distribution
+          
+          noise_matrix = as.matrix(rmvnorm(n=N,mu = rep(0, n_noise),sigma = Sigma_noise_sel))
           
           ##### Draw female, education and conf from a multivariate distribution ##### 
           
@@ -163,29 +152,36 @@ crf_sim_obs <- function(n_obs=c(100), m_runs=10,dgp_complex=T) {
           edu = sample_edu_fem_conf$edu
           conf = sample_edu_fem_conf$conf
           
-          stockret = 3.5*constant + 1.7*high + 0.3*edu - 0.9*high*edu - 0.5*female + 0.8*high*female - 0.5*conf + 0.3*high*conf -0.5*edu*conf+0.8*high*edu*conf+0.15*prior+ 0.001*prior_squ+0.3*high*prior-0.013*high*prior_squ-0.000037*prior*prior_squ+0.000139*high*prior*prior_squ + epsilon  
+          stockret = 3.5*constant + 1.7*high + 0.3*edu - 0.9*high*edu - 0.5*female + 0.8*high*female - 0.5*conf + 0.3*high*conf -0.5*edu*conf+0.8*high*edu*conf+0.15*prior+0.001*prior_squ+0.3*high*prior-0.013*high*prior_squ-0.000037*prior*prior_squ+0.0001392*high*prior*prior_squ + noise_matrix %*% gamma_true_sel + epsilon  
+          
         }
         
         else {
+          
           constant = rep(1,N)
           epsilon = rnorm(N,sd=4.5)
           high = rbinom(N,1,0.5)
+          
+          ### Draw noise variables from multivariate distribution
+          
+          noise_matrix = as.matrix(rmvnorm(n=N,mu = rep(0, n_noise),sigma = Sigma_noise[1:n_noise,1:n_noise]))
+          
           female = rbinom(N,1,0.79)
           edu = rbinom(N,1,0.47)
           prior = rexp(n=N, rate=0.1176)
           prior_squ = prior*prior
           conf = rnorm(N,mean=mean(data$conf),sd=1)
           
-          #stockret = 3.5*constant + 1.7*high + 0.3*edu - 0.9*high*edu - 0.5*female + 0.8*high*female - 0.5*conf + 0.3*high*conf -0.5*edu*conf+0.8*high*edu*conf+0.15*prior+0.3*high*prior-0.013*high*prior_squ-0.000037*prior*prior_squ+0.0001392*high*prior*prior_squ + epsilon  
-          stockret = 3.5*constant + 1.7*high + 0.3*edu - 0.9*high*edu - 0.5*female + 0.8*high*female - 0.5*conf + 0.3*high*conf -0.5*edu*conf+0.8*high*edu*conf+0.15*prior+ 0.001*prior_squ+0.3*high*prior-0.013*high*prior_squ-0.000037*prior*prior_squ+0.000139*high*prior*prior_squ + epsilon  
           
+          
+          stockret = 3.5*constant + 1.7*high + 0.3*edu - 0.9*high*edu - 0.5*female + 0.8*high*female - 0.5*conf + 0.3*high*conf -0.5*edu*conf+0.8*high*edu*conf+0.15*prior+0.001*prior_squ+0.3*high*prior-0.013*high*prior_squ-0.000037*prior*prior_squ+0.0001392*high*prior*prior_squ + noise_matrix %*% gamma_true_sel + epsilon  
         }
         
         if (j == 1) {
           
           # Set up training sample for crf
           
-          covariates_train = data.frame(edu,female,conf,prior,prior_squ)
+          covariates_train = cbind(data.frame(edu,female,conf,prior,prior_squ),data.frame(noise_matrix))
           high_train = high
           stockret_train = stockret
           
@@ -209,7 +205,7 @@ crf_sim_obs <- function(n_obs=c(100), m_runs=10,dgp_complex=T) {
           
           # Set up test sample for crf 
           
-          covariates_test = data.frame(edu,female,conf,prior,prior_squ)
+          covariates_test = cbind(data.frame(edu,female,conf,prior,prior_squ),data.frame(noise_matrix))
           high_test = high
           stockret_test = stockret   
           
@@ -229,7 +225,7 @@ crf_sim_obs <- function(n_obs=c(100), m_runs=10,dgp_complex=T) {
             prior_priorsqu = prior*prior_squ
             high_prior_priorsqu = high*prior*prior_squ
             
-            dmatrix_true_test = data.frame(constant,high,edu,high_edu,female,high_female,conf,high_conf,edu_conf,high_edu_conf,prior,prior_squ,high_prior,high_priorsqu,prior_priorsqu,high_prior_priorsqu)
+            dmatrix_true_test = cbind(data.frame(constant,high,edu,high_edu,female,high_female,conf,high_conf,edu_conf,high_edu_conf,prior,prior_squ,high_prior,high_priorsqu,prior_priorsqu,high_prior_priorsqu),data.frame(noise_matrix))
             
             if (high_val == 0) {
               
@@ -261,10 +257,9 @@ crf_sim_obs <- function(n_obs=c(100), m_runs=10,dgp_complex=T) {
       results_true_Y0 = cbind(results_true_Y0, Y0_true) 
       results_true_Y1 = cbind(results_true_Y1, Y1_true) 
       
-      results_ATE_crf = cbind(results_ATE_crf, ATE_crf)
-      
       counter = counter + 2
-        
+      
+      results_ATE_crf = cbind(results_ATE_crf, ATE_crf)
     }
     
     results_tau_true = results_true_Y1 - results_true_Y0
@@ -288,22 +283,14 @@ crf_sim_obs <- function(n_obs=c(100), m_runs=10,dgp_complex=T) {
     
   }
   
-  row.names(final_table)[1] = "Obs"    
-  
-  ### Final formatting of dataframe
-    
-  final_table = as.data.frame(final_table)
-  colnames(final_table) = as.character(final_table[1,])
-  final_table = final_table[-1,]
-    
+  row.names(final_table)[1] = "Noise"
   return(final_table)
+  
 }
 
-### OLS model
-
-ols_sim_obs <- function(n_obs=c(100), m_runs=10,dgp_complex=T) {
+ols_sim_noise <- function(n_noise_vec=c(20,50,100),gamma_true=gamma_true_val, Sigma_noise = Sigma_noise_val, n_obs = 4000, m_runs=10, dgp_complex=T) {
   
-  n_sim = length(n_obs)
+  n_sim = length(n_noise_vec)
   
   ### Set up results data_frame
   
@@ -313,20 +300,24 @@ ols_sim_obs <- function(n_obs=c(100), m_runs=10,dgp_complex=T) {
   
   for (k in seq(1,n_sim,1)) {
     
-    n = as.integer(n_obs[k])
+    n_noise = as.integer(n_noise_vec[k])
     
-    #print(n)
-    message(n)
+    #print(n_noise)
+    message(n_noise)
     col = c()
-    col = cbind(col,n)
+    col = cbind(col,n_noise)
     
-    beta_true = matrix(data=c(3.5,1.7,0.3,-0.9,-0.5, 0.8,-0.5,0.3,-0.5,0.8,0.15,0.001,0.3,-0.013,-0.000037,0.0001392), nrow=16)
+    Sigma_noise_sel = Sigma_noise[1:n_noise, 1:n_noise]
+    gamma_true_sel = gamma_true[1:n_noise]
+    
+    beta_true = matrix(data=c(3.5,1.7,0.3,-0.9,-0.5, 0.8,-0.5,0.3,-0.5,0.8,0.15,0.001,0.3,-0.013,-0.000037,0.0001392,gamma_true_sel), nrow=16+length(gamma_true_sel))
     
     set.seed(123)
-    N = n 
+    N = n_obs
     M = m_runs
     
     counter = 123
+    
     
     for (i in seq(1:M)) {
       
@@ -365,6 +356,10 @@ ols_sim_obs <- function(n_obs=c(100), m_runs=10,dgp_complex=T) {
           prior = rexp(n=N, rate=0.1176)
           prior_squ = prior*prior
           
+          ### Draw noise variables from multivariate distribution
+          
+          noise_matrix = as.matrix(rmvnorm(n=N,mu = rep(0, n_noise),sigma = Sigma_noise_sel))
+          
           ##### Draw female, education and conf from a multivariate distribution ##### 
           
           ### First draw female and education (multivariate binomial distribution, correlation structure taken from data)
@@ -402,7 +397,7 @@ ols_sim_obs <- function(n_obs=c(100), m_runs=10,dgp_complex=T) {
           edu = sample_edu_fem_conf$edu
           conf = sample_edu_fem_conf$conf
           
-          stockret = 3.5*constant + 1.7*high + 0.3*edu - 0.9*high*edu - 0.5*female + 0.8*high*female - 0.5*conf + 0.3*high*conf -0.5*edu*conf+0.8*high*edu*conf+0.15*prior+ 0.001*prior_squ+0.3*high*prior-0.013*high*prior_squ-0.000037*prior*prior_squ+0.000139*high*prior*prior_squ + epsilon  
+          stockret = 3.5*constant + 1.7*high + 0.3*edu - 0.9*high*edu - 0.5*female + 0.8*high*female - 0.5*conf + 0.3*high*conf -0.5*edu*conf+0.8*high*edu*conf+0.15*prior+0.001*prior_squ+0.3*high*prior-0.013*high*prior_squ-0.000037*prior*prior_squ+0.0001392*high*prior*prior_squ + noise_matrix %*% gamma_true_sel + epsilon  
           
         }
         
@@ -411,14 +406,19 @@ ols_sim_obs <- function(n_obs=c(100), m_runs=10,dgp_complex=T) {
           constant = rep(1,N)
           epsilon = rnorm(N,sd=4.5)
           high = rbinom(N,1,0.5)
+          
+          ### Draw noise variables from multivariate distribution
+          
+          noise_matrix = as.matrix(rmvnorm(n=N,mu = rep(0, n_noise),sigma = Sigma_noise[1:n_noise,1:n_noise]))
+          
           female = rbinom(N,1,0.79)
           edu = rbinom(N,1,0.47)
           prior = rexp(n=N, rate=0.1176)
           prior_squ = prior*prior
           conf = rnorm(N,mean=mean(data$conf),sd=1)
           
-          stockret = 3.5*constant + 1.7*high + 0.3*edu - 0.9*high*edu - 0.5*female + 0.8*high*female - 0.5*conf + 0.3*high*conf -0.5*edu*conf+0.8*high*edu*conf+0.15*prior+ 0.001*prior_squ+0.3*high*prior-0.013*high*prior_squ-0.000037*prior*prior_squ+0.000139*high*prior*prior_squ + epsilon  
           
+          stockret = 3.5*constant + 1.7*high + 0.3*edu - 0.9*high*edu - 0.5*female + 0.8*high*female - 0.5*conf + 0.3*high*conf -0.5*edu*conf+0.8*high*edu*conf+0.15*prior+0.001*prior_squ+0.3*high*prior-0.013*high*prior_squ-0.000037*prior*prior_squ+0.0001392*high*prior*prior_squ + noise_matrix %*% gamma_true_sel + epsilon  
         }
         
         if (j == 1) {
@@ -433,13 +433,14 @@ ols_sim_obs <- function(n_obs=c(100), m_runs=10,dgp_complex=T) {
           prior_priorsqu = prior*prior_squ
           high_prior_priorsqu = high*prior*prior_squ
           
-          dmatrix_simple_train = data.frame(constant,high,edu,high_edu,female,high_female,conf,high_conf,prior,prior_squ,high_prior)
-          dmatrix_complex_train = data.frame(constant,high,edu,high_edu,female,high_female,conf,high_conf,edu_conf,high_edu_conf,prior,prior_squ,high_prior,high_priorsqu,prior_priorsqu,high_prior_priorsqu)
+          dmatrix_simple_train = cbind(data.frame(constant,high,edu,high_edu,female,high_female,conf,high_conf,prior,prior_squ,high_prior),data.frame(noise_matrix))
+          dmatrix_complex_train = cbind(data.frame(constant,high,edu,high_edu,female,high_female,conf,high_conf,edu_conf,high_edu_conf,prior,prior_squ,high_prior,high_priorsqu,prior_priorsqu,high_prior_priorsqu),data.frame(noise_matrix))
           stockret_train = stockret
           
           beta_simple = beta_hat(y=stockret_train,design_matrix = dmatrix_simple_train)
           beta_complex = beta_hat(y=stockret_train,design_matrix = dmatrix_complex_train)
-
+          
+          
         }
         
         else {
@@ -460,9 +461,9 @@ ols_sim_obs <- function(n_obs=c(100), m_runs=10,dgp_complex=T) {
             prior_priorsqu = prior*prior_squ
             high_prior_priorsqu = high*prior*prior_squ
             
-            dmatrix_simple_test = data.frame(constant,high,edu,high_edu,female,high_female,conf,high_conf,prior,prior_squ,high_prior)
-            dmatrix_complex_test = data.frame(constant,high,edu,high_edu,female,high_female,conf,high_conf,edu_conf,high_edu_conf,prior,prior_squ,high_prior,high_priorsqu,prior_priorsqu,high_prior_priorsqu)
-            dmatrix_true_test = data.frame(constant,high,edu,high_edu,female,high_female,conf,high_conf,edu_conf,high_edu_conf,prior,prior_squ,high_prior,high_priorsqu,prior_priorsqu,high_prior_priorsqu)
+            dmatrix_simple_test = cbind(data.frame(constant,high,edu,high_edu,female,high_female,conf,high_conf,prior,prior_squ,high_prior),data.frame(noise_matrix))
+            dmatrix_complex_test = cbind(data.frame(constant,high,edu,high_edu,female,high_female,conf,high_conf,edu_conf,high_edu_conf,prior,prior_squ,high_prior,high_priorsqu,prior_priorsqu,high_prior_priorsqu),data.frame(noise_matrix))
+            dmatrix_true_test = cbind(data.frame(constant,high,edu,high_edu,female,high_female,conf,high_conf,edu_conf,high_edu_conf,prior,prior_squ,high_prior,high_priorsqu,prior_priorsqu,high_prior_priorsqu),data.frame(noise_matrix))
             
             if (high_val == 0) {
               
@@ -528,14 +529,11 @@ ols_sim_obs <- function(n_obs=c(100), m_runs=10,dgp_complex=T) {
     
   }
   
-  row.names(final_table)[1] = "Obs"    
-  
-  ### Final formatting of dataframe
-    
-  final_table = as.data.frame(final_table)
-  colnames(final_table) = as.character(final_table[1,])
-  final_table = final_table[-1,]
-    
+  row.names(final_table)[1] = "Noise"  
   return(final_table)
   
 }
+
+
+
+
