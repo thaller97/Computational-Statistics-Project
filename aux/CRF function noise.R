@@ -46,7 +46,7 @@
 #gamma_true_val = runif(n=2000,-1,1)
 #Sigma_noise_val = diag(2000)
 
-crf_sim_noise <- function(n_noise_vec=c(20,50,100),gamma_true=gamma_true_val, Sigma_noise = Sigma_noise_val, n_obs = 1000, m_runs=10, dgp_complex=T) {
+crf_sim_noise <- function(n_noise_vec=c(20,50,100),gamma_true=gamma_true_val, Sigma_noise = Sigma_noise_val, n_obs = 1000, m_runs=10, dgp_complex=T,parameter_tuning=FALSE) {
   
   n_sim = length(n_noise_vec)
   
@@ -68,7 +68,7 @@ crf_sim_noise <- function(n_noise_vec=c(20,50,100),gamma_true=gamma_true_val, Si
     Sigma_noise_sel = Sigma_noise[1:n_noise, 1:n_noise]
     gamma_true_sel = gamma_true[1:n_noise]
     
-    beta_true = matrix(data=c(3.5,1.7,0.3,-0.9,-0.5, 0.8,-0.5,0.3,-0.5,0.8,0.15,0.001,0.3,-0.013,-0.000037,0.0001392,gamma_true_sel), nrow=16+length(gamma_true_sel))
+    beta_true = matrix(data=c(3.5,1.7,0.3,-0.9,-0.5, 0.8,-0.5,0.3,-0.5,0.8,0.15,0.001,0.3,-0.013,-0.000037,0.000139,gamma_true_sel), nrow=16+length(gamma_true_sel))
     
     set.seed(123)
     N = n_obs
@@ -113,7 +113,7 @@ crf_sim_noise <- function(n_noise_vec=c(20,50,100),gamma_true=gamma_true_val, Si
           
           ### Draw noise variables from multivariate distribution
           
-          noise_matrix = as.matrix(rmvnorm(n=N,mu = rep(0, n_noise),sigma = Sigma_noise_sel))
+          noise_matrix = as.matrix(mvrnorm(n=N,mu = rep(0, n_noise),Sigma = Sigma_noise_sel))
           
           ##### Draw female, education and conf from a multivariate distribution ##### 
           
@@ -152,7 +152,7 @@ crf_sim_noise <- function(n_noise_vec=c(20,50,100),gamma_true=gamma_true_val, Si
           edu = sample_edu_fem_conf$edu
           conf = sample_edu_fem_conf$conf
           
-          stockret = 3.5*constant + 1.7*high + 0.3*edu - 0.9*high*edu - 0.5*female + 0.8*high*female - 0.5*conf + 0.3*high*conf -0.5*edu*conf+0.8*high*edu*conf+0.15*prior+0.001*prior_squ+0.3*high*prior-0.013*high*prior_squ-0.000037*prior*prior_squ+0.0001392*high*prior*prior_squ + noise_matrix %*% gamma_true_sel + epsilon  
+          stockret = 3.5*constant + 1.7*high + 0.3*edu - 0.9*high*edu - 0.5*female + 0.8*high*female - 0.5*conf + 0.3*high*conf -0.5*edu*conf+0.8*high*edu*conf+0.15*prior+0.001*prior_squ+0.3*high*prior-0.013*high*prior_squ-0.000037*prior*prior_squ+0.000139*high*prior*prior_squ + noise_matrix %*% gamma_true_sel + epsilon  
           
         }
         
@@ -174,7 +174,7 @@ crf_sim_noise <- function(n_noise_vec=c(20,50,100),gamma_true=gamma_true_val, Si
           
           
           
-          stockret = 3.5*constant + 1.7*high + 0.3*edu - 0.9*high*edu - 0.5*female + 0.8*high*female - 0.5*conf + 0.3*high*conf -0.5*edu*conf+0.8*high*edu*conf+0.15*prior+0.001*prior_squ+0.3*high*prior-0.013*high*prior_squ-0.000037*prior*prior_squ+0.0001392*high*prior*prior_squ + noise_matrix %*% gamma_true_sel + epsilon  
+          stockret = 3.5*constant + 1.7*high + 0.3*edu - 0.9*high*edu - 0.5*female + 0.8*high*female - 0.5*conf + 0.3*high*conf -0.5*edu*conf+0.8*high*edu*conf+0.15*prior+0.001*prior_squ+0.3*high*prior-0.013*high*prior_squ-0.000037*prior*prior_squ+0.000139*high*prior*prior_squ + noise_matrix %*% gamma_true_sel + epsilon  
         }
         
         if (j == 1) {
@@ -187,7 +187,22 @@ crf_sim_noise <- function(n_noise_vec=c(20,50,100),gamma_true=gamma_true_val, Si
           
           # Fit CRF with training data
           
+         if (parameter_tuning == TRUE) {   
           cf_fitting <- causal_forest(
+            
+            X <- as.matrix(covariates_train),
+            Y <- as.matrix(stockret_train),
+            W <- as.matrix(high_train),
+            
+            
+            seed <- 123,
+            tune.parameters = "all",
+            num.trees = 2000
+            
+          )
+          }
+          else {
+           cf_fitting <- causal_forest(
             
             X <- as.matrix(covariates_train),
             Y <- as.matrix(stockret_train),
@@ -197,8 +212,8 @@ crf_sim_noise <- function(n_noise_vec=c(20,50,100),gamma_true=gamma_true_val, Si
             seed <- 123,
             #tune.parameters = "all",
             num.trees = 2000
-            
-          )
+           )
+          }  
         }
         
         else {
@@ -310,7 +325,7 @@ ols_sim_noise <- function(n_noise_vec=c(20,50,100),gamma_true=gamma_true_val, Si
     Sigma_noise_sel = Sigma_noise[1:n_noise, 1:n_noise]
     gamma_true_sel = gamma_true[1:n_noise]
     
-    beta_true = matrix(data=c(3.5,1.7,0.3,-0.9,-0.5, 0.8,-0.5,0.3,-0.5,0.8,0.15,0.001,0.3,-0.013,-0.000037,0.0001392,gamma_true_sel), nrow=16+length(gamma_true_sel))
+    beta_true = matrix(data=c(3.5,1.7,0.3,-0.9,-0.5, 0.8,-0.5,0.3,-0.5,0.8,0.15,0.001,0.3,-0.013,-0.000037,0.000139,gamma_true_sel), nrow=16+length(gamma_true_sel))
     
     set.seed(123)
     N = n_obs
@@ -358,7 +373,7 @@ ols_sim_noise <- function(n_noise_vec=c(20,50,100),gamma_true=gamma_true_val, Si
           
           ### Draw noise variables from multivariate distribution
           
-          noise_matrix = as.matrix(rmvnorm(n=N,mu = rep(0, n_noise),sigma = Sigma_noise_sel))
+          noise_matrix = as.matrix(mvrnorm(n=N,mu = rep(0, n_noise),Sigma = Sigma_noise_sel))
           
           ##### Draw female, education and conf from a multivariate distribution ##### 
           
@@ -397,7 +412,7 @@ ols_sim_noise <- function(n_noise_vec=c(20,50,100),gamma_true=gamma_true_val, Si
           edu = sample_edu_fem_conf$edu
           conf = sample_edu_fem_conf$conf
           
-          stockret = 3.5*constant + 1.7*high + 0.3*edu - 0.9*high*edu - 0.5*female + 0.8*high*female - 0.5*conf + 0.3*high*conf -0.5*edu*conf+0.8*high*edu*conf+0.15*prior+0.001*prior_squ+0.3*high*prior-0.013*high*prior_squ-0.000037*prior*prior_squ+0.0001392*high*prior*prior_squ + noise_matrix %*% gamma_true_sel + epsilon  
+          stockret = 3.5*constant + 1.7*high + 0.3*edu - 0.9*high*edu - 0.5*female + 0.8*high*female - 0.5*conf + 0.3*high*conf -0.5*edu*conf+0.8*high*edu*conf+0.15*prior+0.001*prior_squ+0.3*high*prior-0.013*high*prior_squ-0.000037*prior*prior_squ+0.000139*high*prior*prior_squ + noise_matrix %*% gamma_true_sel + epsilon  
           
         }
         
@@ -418,7 +433,7 @@ ols_sim_noise <- function(n_noise_vec=c(20,50,100),gamma_true=gamma_true_val, Si
           conf = rnorm(N,mean=mean(data$conf),sd=1)
           
           
-          stockret = 3.5*constant + 1.7*high + 0.3*edu - 0.9*high*edu - 0.5*female + 0.8*high*female - 0.5*conf + 0.3*high*conf -0.5*edu*conf+0.8*high*edu*conf+0.15*prior+0.001*prior_squ+0.3*high*prior-0.013*high*prior_squ-0.000037*prior*prior_squ+0.0001392*high*prior*prior_squ + noise_matrix %*% gamma_true_sel + epsilon  
+          stockret = 3.5*constant + 1.7*high + 0.3*edu - 0.9*high*edu - 0.5*female + 0.8*high*female - 0.5*conf + 0.3*high*conf -0.5*edu*conf+0.8*high*edu*conf+0.15*prior+0.001*prior_squ+0.3*high*prior-0.013*high*prior_squ-0.000037*prior*prior_squ+0.000139*high*prior*prior_squ + noise_matrix %*% gamma_true_sel + epsilon  
         }
         
         if (j == 1) {

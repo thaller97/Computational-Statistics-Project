@@ -64,7 +64,7 @@ dataset_graph <- function(data,vars) {
 
 ### Start with causal forest 
 
-crf_sim_obs <- function(n_obs=c(100), m_runs=10,dgp_complex=T) {
+crf_sim_obs <- function(n_obs=c(100), m_runs=10,dgp_complex=T,parameter_tuning = FALSE) {
   
   n_sim = length(n_obs)
   
@@ -83,7 +83,7 @@ crf_sim_obs <- function(n_obs=c(100), m_runs=10,dgp_complex=T) {
     col = c()
     col = cbind(col,n)
     
-    beta_true = matrix(data=c(3.5,1.7,0.3,-0.9,-0.5, 0.8,-0.5,0.3,-0.5,0.8,0.15,0.001,0.3,-0.013,-0.000037,0.0001392), nrow=16)
+    beta_true = matrix(data=c(3.5,1.7,0.3,-0.9,-0.5, 0.8,-0.5,0.3,-0.5,0.8,0.15,0.001,0.3,-0.013,-0.000037,0.000139), nrow=16)
     
     set.seed(123)
     N = n 
@@ -176,7 +176,7 @@ crf_sim_obs <- function(n_obs=c(100), m_runs=10,dgp_complex=T) {
           prior_squ = prior*prior
           conf = rnorm(N,mean=mean(data$conf),sd=1)
           
-          #stockret = 3.5*constant + 1.7*high + 0.3*edu - 0.9*high*edu - 0.5*female + 0.8*high*female - 0.5*conf + 0.3*high*conf -0.5*edu*conf+0.8*high*edu*conf+0.15*prior+0.3*high*prior-0.013*high*prior_squ-0.000037*prior*prior_squ+0.0001392*high*prior*prior_squ + epsilon  
+          #stockret = 3.5*constant + 1.7*high + 0.3*edu - 0.9*high*edu - 0.5*female + 0.8*high*female - 0.5*conf + 0.3*high*conf -0.5*edu*conf+0.8*high*edu*conf+0.15*prior+0.3*high*prior-0.013*high*prior_squ-0.000037*prior*prior_squ+0.000139*high*prior*prior_squ + epsilon  
           stockret = 3.5*constant + 1.7*high + 0.3*edu - 0.9*high*edu - 0.5*female + 0.8*high*female - 0.5*conf + 0.3*high*conf -0.5*edu*conf+0.8*high*edu*conf+0.15*prior+ 0.001*prior_squ+0.3*high*prior-0.013*high*prior_squ-0.000037*prior*prior_squ+0.000139*high*prior*prior_squ + epsilon  
           
         }
@@ -191,6 +191,21 @@ crf_sim_obs <- function(n_obs=c(100), m_runs=10,dgp_complex=T) {
           
           # Fit CRF with training data
           
+        if (parameter_tuning == TRUE) {
+          cf_fitting <- causal_forest(
+            
+            X <- as.matrix(covariates_train),
+            Y <- as.matrix(stockret_train),
+            W <- as.matrix(high_train),
+            
+            
+            seed <- 123,
+            tune.parameters = "all",
+            num.trees = 2000
+            
+          )
+         }
+         else {
           cf_fitting <- causal_forest(
             
             X <- as.matrix(covariates_train),
@@ -203,6 +218,8 @@ crf_sim_obs <- function(n_obs=c(100), m_runs=10,dgp_complex=T) {
             num.trees = 2000
             
           )
+         }   
+            
         }
         
         else {
@@ -320,7 +337,7 @@ ols_sim_obs <- function(n_obs=c(100), m_runs=10,dgp_complex=T) {
     col = c()
     col = cbind(col,n)
     
-    beta_true = matrix(data=c(3.5,1.7,0.3,-0.9,-0.5, 0.8,-0.5,0.3,-0.5,0.8,0.15,0.001,0.3,-0.013,-0.000037,0.0001392), nrow=16)
+    beta_true = matrix(data=c(3.5,1.7,0.3,-0.9,-0.5, 0.8,-0.5,0.3,-0.5,0.8,0.15,0.001,0.3,-0.013,-0.000037,0.000139), nrow=16)
     
     set.seed(123)
     N = n 
